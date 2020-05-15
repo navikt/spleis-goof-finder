@@ -13,6 +13,7 @@ repositories {
 dependencies {
     implementation(kotlin("stdlib-jdk8"))
     implementation("org.postgresql:postgresql:42.2.12")
+    implementation("com.fasterxml.jackson.core:jackson-databind:2.11.0")
 }
 
 tasks.named<Jar>("jar") {
