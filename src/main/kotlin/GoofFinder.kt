@@ -5,6 +5,7 @@ import java.sql.ResultSet
 import java.time.LocalDate
 
 private val objectMapper = ObjectMapper()
+var personerMedEkstraVedtaksperioder = 0
 
 fun main() {
     val user = System.getenv("DB_USERNAME")
@@ -54,11 +55,14 @@ WHERE skjema_versjon > 5
             val goofed = goofedStatement
                 .executeQuery()
                 .map { it.getString("data") }
-            require(!harUtbetalingerEtterGoof(goofed)) {
+            require(goofed.none{ data -> harUtbetalingerEtterGoof(data, nonGoofed?.vedtaksperioder ?: listOf()) }) {
                 "Fant en periode som har utbetalinger etter goofed perioder, $fnr"
             }
             nonGoofed ?: IngenTidligereData(fnr)
         }.forEach(::println)
+
+        System.err.println("Antall personer: ${goofedFnrs.size}")
+        System.err.println("Antall personer med ekstra vedtaksperioder: $personerMedEkstraVedtaksperioder")
     }
 }
 
@@ -69,8 +73,22 @@ fun vedtaksperiodeIder(data: String): List<String> {
     }.map { it["id"].asText() }
 }
 
-fun harUtbetalingerEtterGoof(vedtaksperioder: List<String>): Boolean {
-    return false;
+fun harUtbetalingerEtterGoof(data: String, okVedtaksperioder: List<String>): Boolean {
+    val json = objectMapper.readValue(data, JsonNode::class.java)
+    val vedtaksperioder = json["arbeidsgivere"]
+        .flatMap { arbeidsgivere ->
+            arbeidsgivere["vedtaksperioder"]
+        }
+        .filter {
+            it["id"].asText() !in okVedtaksperioder
+        }
+
+    if (vedtaksperioder.isNotEmpty()) {
+        personerMedEkstraVedtaksperioder ++
+        System.err.println("Fant person med ny vedtaksperiode etter tom tidslinje")
+        return true
+    }
+    return false
 }
 
 data class IngenTidligereData(
