@@ -82,6 +82,9 @@ fun harUtbetalingerEtterGoof(data: String, okVedtaksperioder: List<String>): Boo
         .filter {
             it["id"].asText() !in okVedtaksperioder
         }
+        .filter {
+            it["tilstand"].asText() == "AVSLUTTET"
+        }
 
     if (vedtaksperioder.isNotEmpty()) {
         personerMedEkstraVedtaksperioder ++
