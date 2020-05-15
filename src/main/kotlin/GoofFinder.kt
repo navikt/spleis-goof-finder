@@ -31,6 +31,7 @@ WHERE skjema_versjon > 5
         )
 
         goofedFnrs.map { fnr ->
+            System.err.println("Henter siste kjente ok vedtaksperiode for $fnr")
             lastNonGoofedMessage.setString(1, fnr)
             lastNonGoofedMessage.executeQuery()
                 .map {
@@ -40,11 +41,14 @@ WHERE skjema_versjon > 5
                         opprettet = it.getDate("opprettet").toLocalDate()
                     )
                 }
-                .firstOrNull()
+                .firstOrNull() ?: IngenTidligereData(fnr)
         }.forEach(::println)
     }
 }
 
+data class IngenTidligereData(
+    val fnr: String
+)
 
 data class NonGoofed(
     val fnr: String,
