@@ -27,14 +27,14 @@ WHERE skjema_versjon > 5
 
         val lastNonGoofedStatement = connection.prepareStatement(
             """
-            SELECT id, opprettet FROM person 
+            SELECT id, opprettet, data FROM person 
             WHERE fnr=? 
                 AND skjema_versjon < 6 
             ORDER BY ID DESC LIMIT 1;
             """
         )
         val goofedStatement =
-            connection.prepareStatement("SELECT id, opprettet, data FROM person WHERE fnr=? AND id > ?;")
+            connection.prepareStatement("SELECT id, opprettet FROM person WHERE fnr=? AND id > ?;")
 
         goofedFnrs.map { fnr ->
             System.err.println("Henter siste kjente ok vedtaksperiode for $fnr")
