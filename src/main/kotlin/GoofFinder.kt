@@ -33,10 +33,13 @@ WHERE skjema_versjon > 5
         goofedFnrs.map { fnr ->
             lastNonGoofedMessage.setString(1, fnr)
             lastNonGoofedMessage.executeQuery()
-                .map { NonGoofed(
-                    fnr = fnr,
-                    id = it.getLong("id"),
-                    opprettet = it.getDate("opprettet").toLocalDate() }
+                .map {
+                    NonGoofed(
+                        fnr = fnr,
+                        id = it.getLong("id"),
+                        opprettet = it.getDate("opprettet").toLocalDate()
+                    )
+                }
                 .firstOrNull()
         }.forEach(::println)
     }
