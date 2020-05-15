@@ -5,7 +5,7 @@ import java.sql.ResultSet
 import java.time.LocalDate
 
 private val objectMapper = ObjectMapper()
-var personerMedEkstraVedtaksperioder = 0
+var antallUtbetalteEtterGoof = 0
 
 fun main() {
     val user = System.getenv("DB_USERNAME")
@@ -18,6 +18,7 @@ fun main() {
             """
 select distinct fnr from person, json_array_elements(data -> 'arbeidsgivere') arbeidsgivere, json_array_elements(arbeidsgivere -> 'vedtaksperioder') vedtaksperioder
 WHERE skjema_versjon > 5
+  AND skjema_versjon < 9
   AND opprettet > date '2020-04-29'
   AND opprettet < date '2020-05-05'
   AND json_array_length(vedtaksperioder -> 'sykdomshistorikk' -> 0 -> 'nyHendelseSykdomstidslinje' -> 'dager') = 0;
@@ -30,39 +31,43 @@ WHERE skjema_versjon > 5
             """
             SELECT id, opprettet, data FROM person 
             WHERE fnr=? 
-                AND skjema_versjon < 6 
+                AND skjema_versjon < 6
             ORDER BY ID DESC LIMIT 1;
             """
         )
         val goofedStatement =
             connection.prepareStatement("SELECT id, opprettet, data FROM person WHERE fnr=? AND id > ?;")
 
-        goofedFnrs.map { fnr ->
-            System.err.println("Henter siste kjente ok vedtaksperiode for $fnr")
-            lastNonGoofedStatement.setString(1, fnr)
-            val nonGoofed = lastNonGoofedStatement.executeQuery()
-                .map {
-                    NonGoofed(
-                        fnr = fnr,
-                        id = it.getLong("id"),
-                        opprettet = it.getDate("opprettet").toLocalDate(),
-                        vedtaksperioder = vedtaksperiodeIder(it.getString("data"))
-                    )
+        goofedFnrs
+            .map { fnr ->
+                System.err.println("Henter siste kjente ok vedtaksperiode for $fnr")
+                lastNonGoofedStatement.setString(1, fnr)
+                val nonGoofed = lastNonGoofedStatement.executeQuery()
+                    .map {
+                        NonGoofed(
+                            fnr = fnr,
+                            id = it.getLong("id"),
+                            opprettet = it.getDate("opprettet").toLocalDate(),
+                            vedtaksperioder = vedtaksperiodeIder(it.getString("data"))
+                        )
+                    }
+                    .firstOrNull()
+                goofedStatement.setString(1, fnr)
+                goofedStatement.setLong(2, nonGoofed?.id ?: 0)
+                val goofed = goofedStatement
+                    .executeQuery()
+                    .map { it.getString("data") }
+
+                if (goofed.any { data -> harUtbetalingerEtterGoof(data, nonGoofed?.vedtaksperioder ?: listOf()) }) {
+                    return@map UtbetaltEtterGoof(fnr)
                 }
-                .firstOrNull()
-            goofedStatement.setString(1, fnr)
-            goofedStatement.setLong(2, nonGoofed?.id ?: 0)
-            val goofed = goofedStatement
-                .executeQuery()
-                .map { it.getString("data") }
-            require(goofed.none{ data -> harUtbetalingerEtterGoof(data, nonGoofed?.vedtaksperioder ?: listOf()) }) {
-                "Fant en periode som har utbetalinger etter goofed perioder, $fnr"
+
+                nonGoofed ?: IngenTidligereData(fnr)
             }
-            nonGoofed ?: IngenTidligereData(fnr)
-        }.forEach(::println)
+            .forEach(::println)
 
         System.err.println("Antall personer: ${goofedFnrs.size}")
-        System.err.println("Antall personer med ekstra vedtaksperioder: $personerMedEkstraVedtaksperioder")
+        System.err.println("Antall personer med utbetalte vedtaksperioder: $antallUtbetalteEtterGoof")
     }
 }
 
@@ -87,12 +92,16 @@ fun harUtbetalingerEtterGoof(data: String, okVedtaksperioder: List<String>): Boo
         }
 
     if (vedtaksperioder.isNotEmpty()) {
-        personerMedEkstraVedtaksperioder ++
+        antallUtbetalteEtterGoof++
         System.err.println("Fant person med ny vedtaksperiode etter tom tidslinje")
         return true
     }
     return false
 }
+
+data class UtbetaltEtterGoof(
+    val fnr: String
+)
 
 data class IngenTidligereData(
     val fnr: String
