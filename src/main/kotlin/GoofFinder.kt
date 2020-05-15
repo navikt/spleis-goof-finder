@@ -1,5 +1,6 @@
 import java.sql.DriverManager
 import java.sql.ResultSet
+import java.time.LocalDate
 
 fun main() {
     val user = System.getenv("DB_USERNAME")
@@ -18,13 +19,40 @@ WHERE skjema_versjon > 5
         """
         )
 
-        val fnr = statement.executeQuery().map { it.getString("fnr") }
-        fnr.forEach(::println)
+        val goofedFnrs = statement.executeQuery().map { it.getString("fnr") }
+
+        val lastNonGoofedMessage = connection.prepareStatement(
+            """
+            SELECT fnr, id, opprettet FROM person 
+            WHERE fnr=? 
+                AND skjema_versjon < 6 
+            ORDER BY ID DESC LIMIT 1;
+            """
+        )
+
+        goofedFnrs.map { fnr ->
+            lastNonGoofedMessage.setString(1, fnr)
+            lastNonGoofedMessage.executeQuery()
+                .map { NonGoofed(
+                    fnr = fnr,
+                    id = it.getLong("id"),
+                    opprettet = it.getDate("opprettet").toLocalDate() }
+                .firstOrNull()
+        }.forEach(::println)
     }
 }
 
-fun <T> ResultSet.map(mapper: (rs: ResultSet) -> T): List<T> = mutableListOf<T>().apply {
-    while (next()) {
-        add(mapper(this@map))
+
+data class NonGoofed(
+    val fnr: String,
+    val id: Long,
+    val opprettet: LocalDate
+)
+
+fun <T> ResultSet.map(mapper: (rs: ResultSet) -> T): List<T> = use {
+    mutableListOf<T>().apply {
+        while (next()) {
+            add(mapper(this@map))
+        }
     }
 }
