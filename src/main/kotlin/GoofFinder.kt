@@ -16,12 +16,11 @@ fun main() {
     ).use { connection ->
         val statement = connection.prepareStatement(
             """
-select distinct fnr from person, json_array_elements(data -> 'arbeidsgivere') arbeidsgivere, json_array_elements(arbeidsgivere -> 'vedtaksperioder') vedtaksperioder
+select fnr from person, json_array_elements(data->'arbeidsgivere' -> 0 -> 'vedtaksperioder') vedtaksperioder
 WHERE skjema_versjon > 5
   AND skjema_versjon < 9
-  AND opprettet > date '2020-04-29'
-  AND opprettet < date '2020-05-05'
-  AND json_array_length(vedtaksperioder -> 'sykdomshistorikk' -> 0 -> 'nyHendelseSykdomstidslinje' -> 'dager') = 0;
+  AND opprettet > '2020-05-04 05:17:00'::timestamp at time zone 'UTC' AND opprettet < '2020-05-04 12:55:00 CEST'::timestamp at time zone 'UTC'
+  AND json_array_length(vedtaksperioder -> 'sykdomshistorikk' -> 0 -> 'nyBeregnetSykdomstidslinje' -> 'dager') != json_array_length(vedtaksperioder -> 'sykdomshistorikk' -> 0 -> 'beregnetSykdomstidslinje');
         """
         )
 
