@@ -21,6 +21,7 @@ fun main() {
 select distinct fnr, aktor_id from person, json_array_elements(data->'arbeidsgivere' -> 0 -> 'vedtaksperioder') vedtaksperioder
 WHERE skjema_versjon > 5
   AND skjema_versjon < 9
+  AND rullet_tilbake IS NULL
   AND opprettet > '2020-05-04 05:17:00'::timestamp at time zone 'UTC' AND opprettet < '2020-05-04 12:55:00 CEST'::timestamp at time zone 'UTC'
   AND json_array_length(vedtaksperioder -> 'sykdomshistorikk' -> 0 -> 'nyBeregnetSykdomstidslinje' -> 'dager') < json_array_length(vedtaksperioder -> 'sykdomshistorikk' -> 0 -> 'beregnetSykdomstidslinje');
         """
