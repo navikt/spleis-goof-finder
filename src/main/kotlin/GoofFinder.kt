@@ -1,5 +1,7 @@
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import java.nio.file.Files
+import java.nio.file.Paths
 import java.sql.DriverManager
 import java.sql.ResultSet
 import java.time.LocalDate
@@ -16,7 +18,7 @@ fun main() {
     ).use { connection ->
         val statement = connection.prepareStatement(
             """
-select distinct fnr from person, json_array_elements(data->'arbeidsgivere' -> 0 -> 'vedtaksperioder') vedtaksperioder
+select distinct fnr, aktor_id from person, json_array_elements(data->'arbeidsgivere' -> 0 -> 'vedtaksperioder') vedtaksperioder
 WHERE skjema_versjon > 5
   AND skjema_versjon < 9
   AND opprettet > '2020-05-04 05:17:00'::timestamp at time zone 'UTC' AND opprettet < '2020-05-04 12:55:00 CEST'::timestamp at time zone 'UTC'
@@ -24,7 +26,7 @@ WHERE skjema_versjon > 5
         """
         )
 
-        val goofedFnrs = statement.executeQuery().map { it.getString("fnr") }
+        val goofedFnrs = statement.executeQuery().map { it.getString("fnr") to it.getString("aktor_id") }
 
         val lastNonGoofedStatement = connection.prepareStatement(
             """
@@ -37,14 +39,15 @@ WHERE skjema_versjon > 5
         val goofedStatement =
             connection.prepareStatement("SELECT id, opprettet, data FROM person WHERE fnr=? AND id > ?;")
 
-        goofedFnrs
-            .map { fnr ->
+        val goofed = goofedFnrs
+            .map { (fnr, aktørId) ->
                 System.err.println("Henter siste kjente ok vedtaksperiode for $fnr")
                 lastNonGoofedStatement.setString(1, fnr)
                 val nonGoofed = lastNonGoofedStatement.executeQuery()
                     .map {
                         NonGoofed(
                             fnr = fnr,
+                            aktørId = aktørId,
                             id = it.getLong("id"),
                             opprettet = it.getDate("opprettet").toLocalDate(),
                             vedtaksperioder = vedtaksperiodeIder(it.getString("data"))
@@ -58,15 +61,43 @@ WHERE skjema_versjon > 5
                     .map { it.getString("data") }
 
                 if (goofed.any { data -> harUtbetalingerEtterGoof(data, nonGoofed?.vedtaksperioder ?: listOf()) }) {
-                    return@map UtbetaltEtterGoof(fnr)
+                    return@map UtbetaltEtterGoof(fnr, aktørId)
                 }
 
-                nonGoofed ?: IngenTidligereData(fnr)
+                nonGoofed ?: IngenTidligereData(fnr, aktørId)
             }
-            .forEach(::println)
-
         System.err.println("Antall personer: ${goofedFnrs.size}")
         System.err.println("Antall personer med utbetalte vedtaksperioder: $antallUtbetalteEtterGoof")
+
+        Files.writeString(Paths.get("goofed_delete.json"), objectMapper.writeValueAsString(goofed
+            .filterIsInstance<IngenTidligereData>()
+            .map {
+                mapOf(
+                    "aktørId" to it.aktørId,
+                    "fødselsnummer" to it.fnr
+                )
+            }
+            .toList())
+        )
+
+        Files.writeString(Paths.get("goofed_rollback.json"), objectMapper.writeValueAsString(goofed
+            .filterIsInstance<NonGoofed>()
+            .map {
+                mapOf(
+                    "aktørId" to it.aktørId,
+                    "fødselsnummer" to it.fnr,
+                    "personVersjon" to it.id
+                )
+            }))
+
+        Files.writeString(Paths.get("goofed_utbetalt.json"), objectMapper.writeValueAsString(goofed
+            .filterIsInstance<UtbetaltEtterGoof>()
+            .map {
+                mapOf(
+                    "aktørId" to it.aktørId,
+                    "fødselsnummer" to it.fnr
+                )
+            }))
     }
 }
 
@@ -99,19 +130,18 @@ fun harUtbetalingerEtterGoof(data: String, okVedtaksperioder: List<String>): Boo
 }
 
 data class UtbetaltEtterGoof(
-    val fnr: String
+    val fnr: String,
+    val aktørId: String
 )
 
 data class IngenTidligereData(
-    val fnr: String
-)
-
-data class Goofed(
-    val data: String
+    val fnr: String,
+    val aktørId: String
 )
 
 data class NonGoofed(
     val vedtaksperioder: List<String>,
+    val aktørId: String,
     val fnr: String,
     val id: Long,
     val opprettet: LocalDate
